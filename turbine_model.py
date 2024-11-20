@@ -59,7 +59,7 @@ def main(args):
     '''
 
     # Initialize the linear wake model
-    wake = linear_wake_model_class(
+    wake = turbine_model_class(
                     # Turbine diameter [m]
                     D=77,
                     # Tower height [m]
@@ -80,7 +80,7 @@ def main(args):
 
 
 
-class linear_wake_model_class():
+class turbine_model_class():
     '''
     This is the class for an individual wake.
     The wake is solved using a linearized version of the Euler

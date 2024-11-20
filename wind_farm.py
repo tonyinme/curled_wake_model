@@ -22,7 +22,7 @@
 #
 #
 
-import linear_wake_model as cw
+import turbine_model as tm
 
 import os
 import numpy as np
@@ -82,7 +82,7 @@ def main(args):
     # List of turbines
     turbines = [
         # Initialize the linear wake model
-        cw.linear_wake_model_class(
+        tm.turbine_model_class(
                         # Turbine diameter [m]
                         D=126,
                         # Tower height [m]
