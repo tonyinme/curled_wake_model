@@ -8,17 +8,17 @@ A fast, modular, and extensible Python solver for wind farm flows using the **Cu
 
 The curled wake model was first introduced in:
 
-> **Martínez-Tossas, L. A., Annoni, J., Fleming, P. A., and Churchfield, M. J. (2019).**
-> The aerodynamics of the curled wake: a simplified model in view of flow control.
-> Wind Energy Science, 2019.
+> **Martínez-Tossas, L. A., Annoni, J., Fleming, P. A., and Churchfield, M. J. (2019).**  
+> The aerodynamics of the curled wake: a simplified model in view of flow control.  
+> Wind Energy Science, 2019.  
 > [https://doi.org/10.5194/wes-4-127-2019](https://doi.org/10.5194/wes-4-127-2019)
 
 
 This latest implementation follows the methodology in:
 
-> **Martínez-Tossas, L. A., King, J., Quon, E., Bay, C. J., Mudafort, R., Hamilton, N., Howland, M. F., and Fleming, P. A. (2021).**
-> The curled wake model: a three-dimensional and extremely fast steady-state wake solver for wind plant flows.
-> Wind Energy Science, 2021.
+> **Martínez-Tossas, L. A., King, J., Quon, E., Bay, C. J., Mudafort, R., Hamilton, N., Howland, M. F., and Fleming, P. A. (2021).**  
+> The curled wake model: a three-dimensional and extremely fast steady-state wake solver for wind plant flows.  
+> Wind Energy Science, 2021.  
 > [https://doi.org/10.5194/wes-6-555-2021](https://doi.org/10.5194/wes-6-555-2021)
 
 ---
