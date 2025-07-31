@@ -39,7 +39,7 @@ This latest implementation follows the methodology in:
 
 ```
 curled_wake_model/
-├── wind_farm_rk.py                  # Main driver and solver orchestrator
+├── wind_farm.py                  # Main driver and solver orchestrator
 ├── wind_farm_plot.py               # Visualization methods (attached as mixins)
 ├── wind_farm_solvers/
 │   ├── solver_steady.py            # Steady-state RK solver
@@ -75,7 +75,7 @@ You may also want to install:
 
 ```python
 from curled_wake_model import turbine_model as tm
-from curled_wake_model.wind_farm_rk import *
+from curled_wake_model.wind_farm import *
 
 # Define turbines
 turbines = [tm.turbine_model_class(D=126, th=90, alpha=20, location=(100, 250, 90))]
@@ -106,7 +106,7 @@ wf.plot_streamwise()
 ## 📁 Example Run
 
 ```bash
-python wind_farm_rk.py
+python wind_farm.py
 ```
 
 This executes a sample 6-turbine layout, computes the wake fields, and saves downstream plane plots.

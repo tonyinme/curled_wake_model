@@ -294,6 +294,7 @@ class wind_farm_class:
         # Molecular viscosity based on Reynolds number
         # This viscosity can be adjusted to account for turbulence effects
         self.nu = self.U * self.h / self.Re
+        self.nu_min = self.U * self.h / self.Re
 
         # Initialize flow fields to zero            
         self.U.fill(self.Uh)
@@ -519,7 +520,7 @@ class wind_farm_class:
             # Print on the screen added veer
             print('Added veer based on vtop and vbottom')  
 
-    def add_turbulence_model(self, f=1):
+    def add_turbulence_model(self, f=1, C=4):
         """
         Apply a turbulence model to modify the kinematic viscosity `nu` using a mixing length approach.
 
@@ -530,6 +531,8 @@ class wind_farm_class:
         ----------
         f : float, optional
             Scaling factor applied to the mixing length (default is 1)
+        C : float, optional
+            Scaling factor applied to the turbulent viscosity
 
         Notes
         -----
@@ -558,7 +561,7 @@ class wind_farm_class:
 
         # Pick the maximum between the turbulent model and the one required for
         #   numerical stability
-        self.nu = np.maximum(nu_t, self.nu)
+        self.nu = C * np.maximum(nu_t, self.nu_min)
 
         print('Added mixing length turbulent viscosity')
 

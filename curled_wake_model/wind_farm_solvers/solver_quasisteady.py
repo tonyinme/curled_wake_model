@@ -103,6 +103,9 @@ def solve_steady_state_in_time(self, tn=100, dt=1, f=4,
     V0 = self.V.copy()
     W0 = self.W.copy()
 
+    # The index of the plane at hub height
+    kh = np.argmin(np.abs(self.z-self.h))
+
     # Time loop        
     while t<=tn:
 
@@ -132,8 +135,8 @@ def solve_steady_state_in_time(self, tn=100, dt=1, f=4,
                 turbine.state=True
 
         # Adjust the viscosity here to ensure stability
-        self.U = np.maximum(0.2 * U0, self.U)  # Jul 3, 2025 - ensure numerical stability
-        self.nu = self.U * self.h / self.Re
+        self.U = np.maximum(np.abs(np.nanmean(self.U[:,:,kh])) * .25, self.U)  # use the value at hub height
+        self.nu_min = self.U * self.h / self.Re  # set the minimum viscosity
         self.add_turbulence_model()
 
         # Run the steady state solver

@@ -211,24 +211,24 @@ def compute_rhs_dynamic(u_current, U, V, W, dx, dy, dz, f, nu):
     return rhs
 
 @njit
-def compute_rhs_steady(u_current, U, V, W, dy, dz, f, nu):
+def compute_rhs_steady(u_current, U, V, W, dy, dz, nu):
     duwdy, duwdz = finite_diff(u_current, dy, dz)
     inv_U = 1.0 / (U + u_current)  # Precompute inverse
-    rhs = inv_U * (-V * duwdy - W * duwdz + f * nu * laplacian(u_current, dy, dz))
+    rhs = inv_U * (-V * duwdy - W * duwdz + nu * laplacian(u_current, dy, dz))
     return rhs
 
 @njit
-def runge_kutta_step(u_current, dx, U, V, W, dy, dz, f, nu):
-    k1 = compute_rhs_steady(u_current, U, V, W, dy, dz, f, nu)
+def runge_kutta_step(u_current, dx, U, V, W, dy, dz, nu):
+    k1 = compute_rhs_steady(u_current, U, V, W, dy, dz, nu)
     
     tmp = u_current + 0.5 * dx * k1  # In-place variable reuse
-    k2 = compute_rhs_steady(tmp, U, V, W, dy, dz, f, nu)
+    k2 = compute_rhs_steady(tmp, U, V, W, dy, dz, nu)
 
     tmp = u_current + 0.5 * dx * k2
-    k3 = compute_rhs_steady(tmp, U, V, W, dy, dz, f, nu)
+    k3 = compute_rhs_steady(tmp, U, V, W, dy, dz, nu)
 
     tmp = u_current + dx * k3
-    k4 = compute_rhs_steady(tmp, U, V, W, dy, dz, f, nu)
+    k4 = compute_rhs_steady(tmp, U, V, W, dy, dz, nu)
 
     return u_current + (dx / 6.0) * (k1 + 2 * k2 + 2 * k3 + k4) 
 

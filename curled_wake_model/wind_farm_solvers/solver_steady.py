@@ -37,6 +37,7 @@ Expected `self`:
 """
 
 from ..wind_farm_utils import *
+from .turbulence_model import *
 
 import numpy as np
 import time
@@ -54,6 +55,7 @@ def solve(self, f=4, cf=2, rk_order=4, check_stability=False, nut_x=False, nut_m
     ----------
     f : float, optional
         Scaling factor for the viscous (diffusion) term. Default is 4.
+        This is the scaling used as C in the 2021 CWM to scale the turbulent visocisty
     cf : float, optional
         Condition factor controlling the spatial influence of turbine-induced vortices. Default is 2.
     rk_order : int, optional
@@ -77,138 +79,38 @@ def solve(self, f=4, cf=2, rk_order=4, check_stability=False, nut_x=False, nut_m
         The solution is stored in-place on the instance attributes (e.g., self.U, self.k).
     """
 
+
+    # Store these so that the turbulence class can access them
+    self.TI = TI
+    self.cf = cf
+
+    # The turbulence model classes
+    model_classes = {
+    'standard': StandardTurbulenceModel,
+    'Scott': ScottTurbulenceModel,
+    'kl': KlTurbulenceModel,
+    }
+
+    # Optional inputs for the turbulence models
+    model_kwargs = {
+        'standard': {'C': f},
+        'Scott': {},
+        'kl': {}
+    }
+
+    # Load the appropriate turbulence model
+    turbulence_model = model_classes[nut_model](self, **model_kwargs.get(nut_model, {}), debug=False)
+#    turbulence_model = model_classes[nut_model](self, debug=False)
+
     # Find the plane for each turbine
     for turbine in self.turbines: turbine.n = np.abs(self.x - turbine.location[0]).argmin()        
-
-    C_nu = 0.04
-    if nut_model=='Scott': nut_x=True
-
-    if nut_model=='kl': 
-
-        f=1
-        self.kw = np.zeros_like(self.uw)
-        self.x_kl = np.zeros_like(self.uw)  # the distance from the wake plane
-        self.k_tot = np.zeros_like(self.uw)  # the total tke
-        self.lmix = np.full_like(self.uw, self.turbines[0].D)  # the mixing length array
-
-        # Minimum viscosity for numerical stability
-        #self.nu_min = self.U * self.h / self.Re
-
-        for turbine in self.turbines:
-            i = turbine.n
-
-            # Create boolean mask over Y at slice i
-            yz_mask = np.abs(self.Y[i, :, :] - turbine.location[1]) < (turbine.D * cf)
-            # Offset along X axis starting from i
-            offset = self.X[i:, :, :] - turbine.location[0]
-            # Create full 3D mask for the i: range where offset > 5D and within yz region
-            full_mask = np.zeros_like(offset, dtype=bool)
-            full_mask[:, :, :] = yz_mask  # broadcast along x
-            x0 = 2.5 * turbine.D
-            valid = (offset > x0) & full_mask
-            # Assign only where valid
-            self.x_kl[i:, :, :][valid] = offset[valid] - x0
-
-        # The minimum mixing length (rotor diameter)
-        l_min = self.turbines[0].D
-
-        # Field of the base k
-        self.kb = (TI * self.U) ** 2 * 3 / 2
-        self.nu = C_nu * np.sqrt(self.kb) * l_min
-
-        def compute_lmix(du, z, l_min=l_min, l_max=None, du_min=0.5):
-            """
-            Compute mixing length from vertical extent of |du| > du_min, for each y.
-
-            Parameters:
-            - du: 2D array [ny, nz]
-            - z: 1D array [nz]
-            - l_min: minimum allowed mixing length
-            - l_max: maximum allowed mixing length
-            - du_min: threshold for |du|
-
-            Returns:
-            - lmix: 2D array [ny, nz] with constant lmix in z at each y
-            """
-            abs_du = np.abs(du)
-            mask = abs_du > du_min
-
-            ny, nz = du.shape
-            lmix = np.full_like(du, l_min)
-
-            # Find first and last non-zero index in each row (y-line)
-            first = np.argmax(mask, axis=1)  # first True along z
-            last = nz - 1 - np.argmax(mask[:, ::-1], axis=1)  # last True along z
-
-            has_wake = mask.any(axis=1)
-            z_low = np.where(has_wake, z[first], 0)
-            z_high = np.where(has_wake, z[last], 0)
-            extent = np.abs(z_high - z_low)
-
-            if l_max is not None:
-                extent = np.clip(extent, l_min, l_max)
-            else:
-                extent = np.maximum(extent, l_min)
-
-            # Broadcast to all z
-            return np.repeat(extent[:, np.newaxis], nz, axis=1)
-
-
-
-        def compute_dkdx(dk, du, U, V, W, nu_T, lmix, dy, dz, C_k1=1, C_k2=1):
-            """
-            Computes the dk/dx term for the turbulence model.
-            """                
-
-            if np.any(lmix <= 0):
-                raise IntegrationException("lmix is non-positive")
-
-            # This is needed for a numerical instability near the wall
-            term1 = np.gradient(du, dz, axis=1, edge_order=1) * np.gradient(U, dz, axis=1, edge_order=1)
-            term1[:,[0,1,2]] = 0  # should try other fixes as well?
-
-            term2 = np.gradient(nu_T * np.gradient(dk, dz, axis=1, edge_order=1), dz, axis=1, edge_order=1)
-            term2[:,[0,1,2]] = 0 
-
-            # transport equation for k_wake, written in parabolic form:
-            dkdx = (
-                -V * np.gradient(dk, dy, axis=0, edge_order=2)
-                -W * np.gradient(dk, dz, axis=1, edge_order=2)
-                + nu_T
-                * (
-                    np.gradient(du, dy, axis=0, edge_order=2) * np.gradient(U, dy, axis=0, edge_order=2)
-                    + term1
-                )
-                + C_k1  # pull out of gradient as C_k1 is constant
-                * (
-                    np.gradient(nu_T * np.gradient(dk, dy, axis=0), dy, axis=0)
-                    + term2
-                )
-                # need np.clip for the sqrt here
-                - C_k2 * (np.clip(dk, 0, None) ** (3 / 2) / lmix)
-            ) / U
-
-            return dkdx
-
-        def rk4_step_kwake(
-            dk, du, U, V, W, nu_T, lmix, dy, dz, dx, compute_dkdx_func,
-        ):
-            """
-            One RK4 step for integrating k_wake in x-direction.
-            """
-            k1 = compute_dkdx_func(dk, du, U, V, W, nu_T, lmix, dy, dz, )
-            k2 = compute_dkdx_func(dk + 0.5 * dx * k1, du, U, V, W, nu_T, lmix, dy, dz, )
-            k3 = compute_dkdx_func(dk + 0.5 * dx * k2, du, U, V, W, nu_T, lmix, dy, dz, )
-            k4 = compute_dkdx_func(dk + dx * k3, du, U, V, W, nu_T, lmix, dy, dz, )
-
-            dk_next = dk + (dx / 6.0) * (k1 + 2 * k2 + 2 * k3 + k4)
-            return dk_next
-
-    
 
     # Compute time
     start = time.time()
     print("Starting solver")
+
+    # Initialize the tubulence model after creating the variables above (needs turbine.n)
+    turbulence_model.initialize()
 
     # Initialize variables
     uw = self.uw
@@ -229,9 +131,8 @@ def solve(self, f=4, cf=2, rk_order=4, check_stability=False, nut_x=False, nut_m
         W = self.W[i, :, :]
 
         # Perform RK step
-        uw[i,:,:] = runge_kutta_step(uw[i-1,:,:], dx, U, V + vw[i-1,:,:], W+ ww[i-1,:,:], self.dy, self.dz, f, self.nu[i-1,:,:])
-        
-        
+        uw[i,:,:] = runge_kutta_step(uw[i-1,:,:], dx, U, V + vw[i-1,:,:], W+ ww[i-1,:,:], self.dy, self.dz, self.nu[i-1,:,:])
+                
         # A simple evolution model to scale v the same way that U has scaled
         # This saves all the work of resolving the transport equation (du/dx~dv/dx)
         fact = (U + uw[i-1,:,:]) / (U + self.uw[i,:,:])
@@ -239,22 +140,6 @@ def solve(self, f=4, cf=2, rk_order=4, check_stability=False, nut_x=False, nut_m
         fact = np.clip(fact, .1, 1.)
         vw[i,:,:] = vw[i-1,:,:] * fact
         ww[i,:,:] = ww[i-1,:,:] * fact
-
-        if nut_model=='kl':
-
-            # Calculate the mixing length
-            self.lmix[i-1,:,:] = compute_lmix(uw[i-1,:,:], self.z)
-
-            # This is the original implementation
-            self.kw[i,:,:] = rk4_step_kwake(self.kw[i-1,:,:], uw[i-1,:,:], U + uw[i-1,:,:], 
-                V + vw[i-1,:,:], W+ ww[i-1,:,:], self.nu[i-1,:,:], self.lmix[i-1,:,:], 
-                dy, dz, dx, compute_dkdx)
-
-            cond = self.x_kl[i, :, :] > 0
-            yi, zi = np.where(cond)
-
-            self.k_tot[i, :, :] = np.clip(self.kb[i, :, :] + self.kw[i, :, :], 0, None)
-            self.nu[i, yi, zi] = C_nu * np.sqrt(self.k_tot[i, yi, zi]) * self.lmix[i, yi, zi]
 
         # This is used to check the stability of the numerical algorithm. 
         # It is recommended to leave this off (default) unless debugging
@@ -275,11 +160,10 @@ def solve(self, f=4, cf=2, rk_order=4, check_stability=False, nut_x=False, nut_m
                 print(f'Instability detected at x={self.x[i]} in {num_unstable} points')
 
         # Add wake deficit from turbines
-#           for j, n in enumerate(self.activate):
         for turbine in self.turbines:
             
             # Plane of the turbine
-            n = turbine.n #np.abs(self.x - turbine.location[0]).argmin()
+            n = turbine.n
 
             # Add the wake here
             if (n == i) and (turbine.state is True):
@@ -309,71 +193,16 @@ def solve(self, f=4, cf=2, rk_order=4, check_stability=False, nut_x=False, nut_m
                     self.Z[i,:,:] - turbine.location[2], 
                     vw[i,:,:], ww[i,:,:]
                 )
-
-                if nut_model=='Scott':
-                    '''
-                    Implement viscosity from R Scott et al, WES, 2023
-                    '''
-                    idx = i+1
-                    x = (self.X[idx:, cond[0], cond[1]]-turbine.location[0]) #/ turbine.D  # dimensionless
-                    sigma = 5.5  # dimensionless
-                    A = turbine.D / 2 * turbine.Uh * np.sqrt(1-turbine.Ct) / 2
-                    nu = A * (0.01 + x/sigma**2 * np.exp(-x**2/(2*sigma**2)))
-                    print(f'plane {i}')
-                    print(f'Turbine x {turbine.location[0]}')
-                    print(f'A={A}')
-                    print(f'D={turbine.D}')
-                    print(f'Uh={turbine.Uh}')
-                    print(nu.shape)
-                    print(x.shape)
-                    print(nu[:,-100])
-                    self.nu[idx:, cond[0], cond[1]] = nu #np.maximum(nu, self.nu[idx:, cond[0], cond[1]])
                 
+        # This will update the variable nu
+        # It should be done after the rest of the updates to ensure proper access to all updated quantities in turbines
+        turbulence_model.update(i)
+        
         # Apply boundary conditions
         uw[i, :, [0, -1]] = 0
         uw[i, [0, -1], :] = 0
 
-    if nut_model=='kl':
-        field_names = ["kw", "nu", "kb", "k_tot", "x_kl", "lmix"]
-        z_index = int(self.h / self.dz)
-        z_index = 1
-        n = len(field_names)
-
-        ncols = int(np.ceil(np.sqrt(n)))
-        nrows = int(np.ceil(n / ncols))
-
-        # Don't use constrained_layout — we'll manage spacing manually
-        fig, axs = plt.subplots(nrows, ncols, figsize=(6 * ncols, 5 * nrows))
-        axs = np.ravel(axs)
-
-        for i, field_name in enumerate(field_names):
-            field = getattr(self, field_name)
-            ax = axs[i]
-
-            # Plot field
-            pcm = ax.pcolormesh(self.x, self.y, field[:, :, z_index].T, shading='gouraud')
-            ax.set_title(field_name)
-            ax.set_aspect('equal')
-
-            # Add matched-height colorbar
-            divider = make_axes_locatable(ax)
-            cax = divider.append_axes("right", size="5%", pad=0.05)
-            fig.colorbar(pcm, cax=cax)
-
-        # Turn off unused axes
-        for j in range(n, len(axs)):
-            axs[j].axis('off')
-
-        # Adjust layout to prevent overlap
-        fig.tight_layout()
-
-        # Save
-        time_label = self.t if hasattr(self, "t") else 'unkown'
-        #time_label = #self.time_video[-1] if self.time_video else "unknown"
-        plt.savefig(f'{self.saveDir}/test_nut_{time_label}.png', dpi=150)
-        plt.close(fig)
-
-
+    turbulence_model.postprocess()
 
     print("Solver finished")
 
