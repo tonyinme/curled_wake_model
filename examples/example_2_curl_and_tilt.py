@@ -37,24 +37,10 @@ os.chdir(script_dir)
 
 def main(args):
 
-    # The coordinates for all turbines
-    layout_x = [1000, 1882, 2764, 1000, 1882, 2764]
-    layout_y = [1000, 1000, 1500, 1500, 2000, 2000]
-
-    # The list of yaw angles
-    yaw = [25, 15, 0, 25, 15, 0, ]
-
-    # The length of the domain
-    x_min = np.amin(np.array(layout_x))
-    x_max = np.amax(np.array(layout_x))
-
-    y_min = np.amin(np.array(layout_y))
-    y_max = np.amax(np.array(layout_y))
-
-    # The domain sizes [m]
-    Lx = x_max - x_min + 2000
-    Ly = y_max - y_min + 400
-    Lz = 400
+    D = 126  # diameter [m]
+    Lx = 10*D  # length of domain [m]
+    Ly=6*D  # width of domain [m]
+    Lz = 300 # height of domain [m]
 
     '''
     Loop of yaw angles
@@ -69,20 +55,19 @@ def main(args):
                         th=90,
                         # Thrust coefficient at Uh (without yaw)
                         Ct=None, # if None, a lookup table will be used
+                        Cp=None,
                         # Yaw angle [deg]
-                        alpha=yaw[i],
+                        alpha=20,
+                        tilt=15, # [deg]
                         # Hub height velocity [m/s]
                         Uh=8.,
                         # Tip speed ratio (specifies the direction with + or -)
-                        tsr=9999, # high number means zero rotation
-                        #~ tsr=8,
+                        tsr=8,
                         # Flag to include the ground effects
                         ground=True,
                         # Location
-                        location=(layout_x[i] - x_min + 200 , layout_y[i] - y_min + 200, 90)
-                        #~ location=(np.random.rand()*5000, np.random.rand()*5000, 200)
+                        location=(2*D, Ly/2, 90)
                         )
-         for i in range(len(layout_x))
      ]
 
     # Initiate the wind farm object
@@ -96,30 +81,24 @@ def main(args):
                 Uh=10,
                 h=90,
                 turbines=turbines,
-                saveDir='example_1_results',
+                saveDir='example_2_results',
             )
 
     # Add the boundary layer
-    wf.add_boundary_layer(alpha_shear=0.2)
+    wf.add_boundary_layer(TI=0.02)
     # Add the turbulence model
     wf.add_turbulence_model()
 
-    # Loop through the different turbulence model options
-    for turb in ['Scott', 'standard', 'kl']:
 
-        # Call the volver
-        wf.solve(nut_model=turb)
+    # Call the volver
+    wf.solve(nut_model='standard')
 
-        wf.plot_streamwise(name=f'plane_h_{turb}_plane.png')
+    wf.plot_streamwise(name=f'plane_h_plane.png')
 
-        # Plot the power from all turbines
-        power = [t.power() for t in turbines]
-        plt.plot(power, 'o-', label=turb)
-
-    plt.xlabel('Turbine')
-    plt.ylabel('Power [MW]')
-    plt.legend()
-    plt.savefig(os.path.join(wf.saveDir,'power.png'))
+    # Plot different downstream locations
+    for i in range(1, 8):
+        x = 2*D + i * D
+        wf.plot_x_plane(x=x, file_name='x'+str(i) + 'D.png', vmin=.5, vmax=1., streamplot=True, rotors=True)
 
 
 
