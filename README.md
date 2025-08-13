@@ -55,7 +55,7 @@ curled_wake_model/
 
 ## 📦 Installation
 
-Install dependencies via pip:
+Install dependencies via conda and pip:
 
 ```bash
 # 1. Create a conda environment with Python >= 3.12
@@ -72,6 +72,29 @@ cd curled_wake_model
 pip install -r requirements.txt
 
 # 5. Install the package in development mode
+pip install -e .
+```
+
+If using Windows this can be done using Powershell
+```bash
+:: 1. Make sure Python 3.12 or newer is installed
+::    You can check with:
+python --version
+
+:: 2. (Optional) Create a virtual environment
+python -m venv cwm_env
+
+:: 3. Activate the virtual environment
+cwm_env\Scripts\activate
+
+:: 4. Clone the rk4_solvers branch of the repository
+git clone -b rk4_solvers https://github.com/tonyinme/curled_wake_model.git
+cd curled_wake_model
+
+:: 5. Install dependencies
+pip install -r requirements.txt
+
+:: 6. Install the package in development mode
 pip install -e .
 ```
 
