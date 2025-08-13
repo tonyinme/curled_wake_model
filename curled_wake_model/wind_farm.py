@@ -561,7 +561,7 @@ class wind_farm_class:
 
         # Pick the maximum between the turbulent model and the one required for
         #   numerical stability
-        self.nu = C * np.maximum(nu_t, self.nu_min)
+        self.nu = np.maximum(C * nu_t, self.nu_min)
 
         print('Added mixing length turbulent viscosity')
 

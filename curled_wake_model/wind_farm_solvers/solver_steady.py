@@ -136,7 +136,7 @@ def solve(self, f=4, cf=2, rk_order=4, check_stability=False, nut_x=False, nut_m
         # A simple evolution model to scale v the same way that U has scaled
         # This saves all the work of resolving the transport equation (du/dx~dv/dx)
         fact = (U + uw[i-1,:,:]) / (U + self.uw[i,:,:])
-        # This ensures that V and W do not become larger
+        # This ensures that V and W do not become larger (they should always decay)
         fact = np.clip(fact, .1, 1.)
         vw[i,:,:] = vw[i-1,:,:] * fact
         ww[i,:,:] = ww[i-1,:,:] * fact

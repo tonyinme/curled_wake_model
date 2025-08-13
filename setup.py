@@ -11,6 +11,6 @@ setup(
     install_requires=[
         line.strip() for line in open("requirements.txt") if line.strip() and not line.startswith("#")
     ],
-    python_requires=">=3.8",
+    python_requires=">=3.12",
     include_package_data=True,
 )

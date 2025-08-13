@@ -99,7 +99,7 @@ def main(args):
     # Plot different downstream locations
     for i in range(1, 10, 2):
         x = 2*D + i * D
-        wf.plot_x_plane(x=x, file_name='x'+str(i) + 'D.png', vmin=.5, vmax=1., rotors=True)
+        wf.plot_x_plane(x=x, file_name='x'+str(i) + 'D.png', vmin=.5, vmax=1., rotors=True, streamplot=True)
 
 
 
