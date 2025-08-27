@@ -463,7 +463,7 @@ class wind_farm_class:
             self.U = np.maximum(0.2 * self.U, Ubl)
             
             print('Boundary layer computed based on turbulence intensity')
-            print('z0 =', z0)
+            #print('z0 =', z0)
 
     def add_veer(self, 
                         mode='linear', 

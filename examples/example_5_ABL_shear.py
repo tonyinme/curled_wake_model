@@ -58,7 +58,7 @@ def main(args):
     Ly = y_max - y_min + 400
     Lz = 400
 
-    # List of veer angles across the rotor [deg]
+    # List of turb
     TI_ls = [.05, .1, .15, .2]
 
 

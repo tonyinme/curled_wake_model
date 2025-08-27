@@ -52,6 +52,7 @@ def solve_steady_state_in_time(self, tn=100, dt=1, f=4,
     N=1,
     nut_model='standard',
     layout_time_fn = None,
+    ti_fn=None,
     ):
     """
     Solve the Computational Wake Model (CWM) using a quasi-steady time-marching approach.
@@ -113,6 +114,16 @@ def solve_steady_state_in_time(self, tn=100, dt=1, f=4,
         self.U = U0 + dUt(t)
         self.V = V0 + dVt(t)
 
+        # Add the turbulence model here
+        if ti_fn:
+#            self.Uh = self.U[:,:,kh]
+            # Adjust the hub height velocity to be the same
+            self.Uh = np.repeat(self.U[:, :, kh][:, :, np.newaxis], self.U.shape[2], axis=2)
+            TI = ti_fn(t)
+            self.add_boundary_layer(TI=TI)
+            # Make this a float value again to use in nondimensionalization
+            self.Uh = self.U[:, :, kh].mean()
+
         # Get the new turbine location
         if layout_time_fn:
             layout_x, layout_y = layout_time_fn(t)
@@ -137,7 +148,7 @@ def solve_steady_state_in_time(self, tn=100, dt=1, f=4,
         # Adjust the viscosity here to ensure stability
         self.U = np.maximum(np.abs(np.nanmean(self.U[:,:,kh])) * .25, self.U)  # use the value at hub height
         self.nu_min = self.U * self.h / self.Re  # set the minimum viscosity
-        self.add_turbulence_model()
+        #self.add_turbulence_model()
 
         # Run the steady state solver
         self.solve(f=f, nut_model=nut_model)
