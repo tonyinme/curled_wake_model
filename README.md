@@ -44,7 +44,7 @@ curled_wake_model/
 ├── wind_farm_solvers/
 │   ├── solver_steady.py            # Steady-state RK solver
 │   ├── solver_time.py              # Full unsteady RK solver
-│   └── solver_quasisteady.py       # Quasi-steady solver (fast approximated time evolution)
+│   └── solver_quasisteady.py       # Quasi-steady solver (run multiple steady-state solves)
 ├── turbine_model.py                # Turbine class including actuator and wake properties
 ├── examples/                       # Example wind farm layouts and runs
 ├── requirements.txt                # Dependencies
@@ -65,7 +65,7 @@ conda create -n cwm_env python=3.12
 conda activate cwm_env
 
 # 3. Clone the rk4_solvers branch of the repository
-git clone -b rk4_solvers https://github.com/tonyinme/curled_wake_model.git
+git clone https://github.com/tonyinme/curled_wake_model.git
 cd curled_wake_model
 
 # 4. Install dependencies
@@ -87,8 +87,8 @@ python -m venv cwm_env
 :: 3. Activate the virtual environment
 cwm_env\Scripts\activate
 
-:: 4. Clone the rk4_solvers branch of the repository
-git clone -b rk4_solvers https://github.com/tonyinme/curled_wake_model.git
+:: 4. Clone the repository
+git clone https://github.com/tonyinme/curled_wake_model.git
 cd curled_wake_model
 
 :: 5. Install dependencies
@@ -110,24 +110,8 @@ You may also want to install:
 
 ## 🌀 Quick Start
 
-```python
-from curled_wake_model import turbine_model as tm
-from curled_wake_model.wind_farm import *
-
-# Define turbines
-turbines = [tm.turbine_model_class(D=126, th=90, alpha=20, location=(100, 250, 90))]
-
-# Create wind farm
-wf = wind_farm_class(Lx=1000, Ly=500, Lz=300, Nx=100, Ny=50, Nz=30, turbines=turbines)
-
-# Set boundary layer
-wf.add_boundary_layer(alpha_shear=0.2)
-
-# Run solver
-wf.solve()
-
-# Plot
-wf.plot_streamwise()
+```cd examples
+python example_1_turbulence_models.py
 ```
 
 ---
@@ -137,16 +121,6 @@ wf.plot_streamwise()
 - Wake field components: `U`, `V`, `W`, and deficits `uw`, `vw`, `ww`
 - Time-resolved wake snapshots: `wf.u_time`, `wf.time_video`
 - Turbine-specific diagnostics: power, Ct, Cp, time series
-
----
-
-## 📁 Example Run
-
-```bash
-python wind_farm.py
-```
-
-This executes a sample 6-turbine layout, computes the wake fields, and saves downstream plane plots.
 
 ---
 
