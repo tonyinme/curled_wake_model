@@ -91,69 +91,98 @@ def plot_streamwise_new(self, name='horizontalProfile.png', field='Uh+uw', z=Non
     Plot horizontal profiles of a specified velocity-related field at hub height.
     Parameters:
         field: str, one of ['Uh+uw', 'vmag', 'U', 'uw', etc.]
-        coord_transform: callable, (X, Y) -> (Xp, Yp), applied to meshgrid of self.x, self.y
+        coord_transform: callable, (t, X, Y) -> (Xp, Yp), applied to meshgrid of self.x, self.y
     """
 
     if z is None:
         z = self.h
     i = np.abs(self.z - z).argmin()  # hub height index
 
+    # ----------------------------
+    # Multi-frame mode (all_times)
+    # ----------------------------
     if all_times and hasattr(self, 'u_time'):
         for idx, frame in enumerate(self.u_time):
-            data = (frame[:, :, i] + self.Uh) if not background else frame[:, :, i] 
-            #data = data / self.Uh
+            # Prepare label-safe time string (works for float, str, datetime)
+            t_val = self.time_video[idx]
+            t_label = t_val.strftime("%Y-%m-%d %H:%M:%S") if hasattr(t_val, "strftime") else str(t_val)
+
+            # model/data fields
+            data = (frame[:, :, i] + self.Uh) if not background else frame[:, :, i]
             X, Y = np.meshgrid(self.x, self.y, indexing='ij')
             if coord_transform:
-                Xp, Yp = coord_transform(self.time_video[idx], X, Y)
+                Xp, Yp = coord_transform(t_val, X, Y)
             else:
                 Xp, Yp = X, Y
 
             if compare_data is not None:
                 fig, (ax1, ax2, ax3) = plt.subplots(1, 3, figsize=(18, 5), constrained_layout=True)
-                ax1.set_aspect('equal', adjustable='box')
-                ax2.set_aspect('equal', adjustable='box')
-                ax3.set_aspect('equal', adjustable='box')
-                if not vmin: vmin=np.amin(data)
-                if not vmax: vmax=np.amax(data)
+                for a in (ax1, ax2, ax3):
+                    a.set_aspect('equal', adjustable='box')
+                # allow vmin/vmax=0; only auto-set when None
+                _vmin = np.amin(data) if vmin is None else vmin
+                _vmax = np.amax(data) if vmax is None else vmax
             else:
                 fig, ax1 = plt.subplots()
                 ax1.set_aspect('equal', adjustable='box')
+                _vmin = np.amin(data) if vmin is None else vmin
+                _vmax = np.amax(data) if vmax is None else vmax
 
-            img1 = ax1.pcolormesh(Xp, Yp, data, cmap=cmap, vmin=vmin, vmax=vmax, shading='nearest')
-            ax1.set_title(f"Model at t={self.time_video[idx]:.1f} s")
+            img1 = ax1.pcolormesh(Xp, Yp, data, cmap=cmap, vmin=_vmin, vmax=_vmax, shading='nearest')
+            ax1.set_title(f"Model at t={t_label}")
 
             if compare_data is not None:
+                # SAFE compare_data call
                 try:
-                    compare = compare_data(self.time_video[idx], Xp, Yp)
+                    compare = compare_data(t_val, Xp, Yp)
                 except Exception as e:
-                    print(f"Error in compare_data at time {self.time_video[idx]}: {e}")
-                    compare = np.zeros_like(data)
-                img2 = ax2.pcolormesh(Xp, Yp, compare, cmap=cmap, vmin=vmin, vmax=vmax, shading='nearest')
-                ax2.set_title(f"Data at t={self.time_video[idx]:.1f} s")
+                    print(f"Error in compare_data at time {t_label}: {e}")
+                    compare = np.full_like(data, np.nan)
 
-                error_data = data-compare
+                img2 = ax2.pcolormesh(Xp, Yp, compare, cmap=cmap, vmin=_vmin, vmax=_vmax, shading='nearest')
+                ax2.set_title(f"Data at t={t_label}")
 
-                valid_mask = ~np.isnan(compare)
-                err_metric = np.nanmean(np.abs(error_data[valid_mask])) # MAE
-                val_max = np.nanmax(np.abs(error_data))  # max value of the error for the colorbar
+                error_data = data - compare
+
+                # ---- robust MAE and error color scale ----
+                valid_mask = np.isfinite(compare) & np.isfinite(data)
+                abs_err_valid = np.abs(error_data[valid_mask])
+                err_metric = (np.nan if abs_err_valid.size == 0 else float(np.nanmean(abs_err_valid)))
+
+                finite_abs = np.abs(error_data[np.isfinite(error_data)])
+                if finite_abs.size == 0:
+                    val_max = 1.0  # fallback to avoid All-NaN warning and zero range
+                else:
+                    vm = float(np.nanmax(finite_abs))
+                    val_max = vm if vm > 0 else 1.0
+
                 img3 = ax3.pcolormesh(Xp, Yp, error_data, cmap='bwr', vmin=-val_max, vmax=val_max, shading='nearest')
+                err_str = "—" if not np.isfinite(err_metric) else f"{err_metric:.2f}"
+                ax3.set_title(f"MAE at t={t_label} is {err_str} m/s")
 
-                ax3.set_title(f"MAE at t={self.time_video[idx]:.1f} s is {err_metric:.2f} m/s")
-
+                # axes cosmetics + turbine overlays
                 for a in (ax1, ax2, ax3):
                     a.set_xlabel(r'$x$ [m]')
                     a.set_ylabel(r'$y$ [m]')
-                    if xlim: a.set_xlim(xlim)
-                    if ylim: a.set_ylim(ylim)
+                    if xlim is not None: a.set_xlim(xlim)
+                    if ylim is not None: a.set_ylim(ylim)
                     if turb_loc:
-                        for t in self.turbines:
-                            ################### FIX THIS, the time is off, it should interpolate the turbine data
-                            idt = np.abs(np.array(t.time) - self.time_video[idx]).argmin()
-                            x1 = x2 = t.location_time[idt][0] #t.location[0]
-                            #y1, y2 = t.location[1] - t.D / 2, t.location[1] + t.D / 2
-                            y1, y2 = t.location_time[idt][1] - t.D / 2, t.location_time[idt][1] + t.D / 2
+                        for t in getattr(self, 'turbines', []):
+                            # Guard empty time/location arrays
+                            t_times = np.asarray(getattr(t, 'time', []))
+                            t_locs  = np.asarray(getattr(t, 'location_time', []), dtype=float)
+                            if t_times.size == 0 or t_locs.size == 0:
+                                continue
+                            # nearest index in turbine timeline
+                            idt = int(np.abs(t_times - t_val).argmin()) if t_times.size else None
+                            if idt is None or idt >= t_locs.shape[0]:
+                                continue
+                            # rotor endpoints
+                            x1 = x2 = t_locs[idt][0]
+                            y1, y2 = t_locs[idt][1] - t.D / 2, t_locs[idt][1] + t.D / 2
                             xm, ym = x1, (y1 + y2) / 2
-                            alpha = t.alpha_fun(self.time_video[idx]) if hasattr(t, 'alpha_fun') else t.alpha
+                            alpha = t.alpha_fun(t_val) if hasattr(t, 'alpha_fun') else getattr(t, 'alpha', 0.0)
+                            # rotate endpoints about centerline
                             dx, dy = x1 - xm, y1 - ym
                             xr1 = xm + dx * np.cos(alpha) - dy * np.sin(alpha)
                             yr1 = ym + dy * np.cos(alpha) + dx * np.sin(alpha)
@@ -161,10 +190,13 @@ def plot_streamwise_new(self, name='horizontalProfile.png', field='Uh+uw', z=Non
                             xr2 = xm + dx * np.cos(alpha) - dy * np.sin(alpha)
                             yr2 = ym + dy * np.cos(alpha) + dx * np.sin(alpha)
                             if coord_transform:
-                                xr, yr = coord_transform(self.time_video[idx], np.array([[xr1, xr2]]), np.array([[yr1, yr2]]))
-                                xr1, xr2 = xr[0, 0], xr[0, 1]
-                                yr1, yr2 = yr[0, 0], yr[0, 1]
+                                xr, yr = coord_transform(t_val, np.array([[xr1, xr2]]), np.array([[yr1, yr2]]))
+                                if getattr(xr, 'size', 0) >= 2 and getattr(yr, 'size', 0) >= 2:
+                                    xr1, xr2 = xr[0, 0], xr[0, 1]
+                                    yr1, yr2 = yr[0, 0], yr[0, 1]
                             a.plot([xr1, xr2], [yr1, yr2], '-k', lw=2)
+
+                # colorbars
                 fig.colorbar(img1, ax=ax1, fraction=0.046, pad=0.04)
                 fig.colorbar(img2, ax=ax2, fraction=0.046, pad=0.04)
                 fig.colorbar(img3, ax=ax3, fraction=0.046, pad=0.04)
@@ -173,9 +205,11 @@ def plot_streamwise_new(self, name='horizontalProfile.png', field='Uh+uw', z=Non
 
             fig.savefig(self.saveDir + f'/{name[:-4]}_t{idx:04d}.png', bbox_inches='tight', dpi=250)
             plt.close(fig)
-        return
+        return  # end all_times
 
-    # Fallback to single frame mode (not all_times)
+    # ----------------------------
+    # Single-frame (not all_times)
+    # ----------------------------
     if field == 'Uh+uw':
         data = np.asarray(self.uw[:, :, i] + self.Uh)
     elif field == 'wspd':
@@ -188,7 +222,7 @@ def plot_streamwise_new(self, name='horizontalProfile.png', field='Uh+uw', z=Non
         raise ValueError(f"Unknown field: {field}")
 
     if field == 'Uh+uw':
-        data /= self.Uh
+        data = data / self.Uh
 
     X, Y = np.meshgrid(self.x, self.y, indexing='ij')
     if coord_transform:
@@ -198,45 +232,56 @@ def plot_streamwise_new(self, name='horizontalProfile.png', field='Uh+uw', z=Non
 
     fig, ax = plt.subplots()
     ax.set_aspect('equal', adjustable='box')
-    img = ax.pcolormesh(Xp, Yp, data, cmap=cmap, vmin=vmin, vmax=vmax, shading='nearest')
+    img = ax.pcolormesh(
+        Xp, Yp, data, cmap=cmap,
+        vmin=(np.amin(data) if vmin is None else vmin),
+        vmax=(np.amax(data) if vmax is None else vmax),
+        shading='nearest'
+    )
 
     if turb_loc:
-        for t in self.turbines:
-            x1 = x2 = t.location[0]
-            y1, y2 = t.location[1] - t.D / 2, t.location[1] + t.D / 2
+        for t in getattr(self, 'turbines', []):
+            loc = getattr(t, 'location', None)
+            if loc is None or len(loc) < 2:
+                continue
+            x1 = x2 = loc[0]
+            y1, y2 = loc[1] - t.D / 2, loc[1] + t.D / 2
             xm, ym = x1, (y1 + y2) / 2
+            alpha = getattr(t, 'alpha', 0.0)
             dx, dy = x1 - xm, y1 - ym
-            xr1 = xm + dx * np.cos(t.alpha) - dy * np.sin(t.alpha)
-            yr1 = ym + dy * np.cos(t.alpha) + dx * np.sin(t.alpha)
+            xr1 = xm + dx * np.cos(alpha) - dy * np.sin(alpha)
+            yr1 = ym + dy * np.cos(alpha) + dx * np.sin(alpha)
             dx, dy = x2 - xm, y2 - ym
-            xr2 = xm + dx * np.cos(t.alpha) - dy * np.sin(t.alpha)
-            yr2 = ym + dy * np.cos(t.alpha) + dx * np.sin(t.alpha)
+            xr2 = xm + dx * np.cos(alpha) - dy * np.sin(alpha)
+            yr2 = ym + dy * np.cos(alpha) + dx * np.sin(alpha)
             if coord_transform:
                 xr, yr = coord_transform(0, np.array([[xr1, xr2]]), np.array([[yr1, yr2]]))
-                xr1, xr2 = xr[0, 0], xr[0, 1]
-                yr1, yr2 = yr[0, 0], yr[0, 1]
+                if getattr(xr, 'size', 0) >= 2 and getattr(yr, 'size', 0) >= 2:
+                    xr1, xr2 = xr[0, 0], xr[0, 1]
+                    yr1, yr2 = yr[0, 0], yr[0, 1]
             ax.plot([xr1, xr2], [yr1, yr2], '-k', lw=2)
             if turbine_names:
-                label_x, label_y = t.location[0] + 300, t.location[1] + 100
+                label_x, label_y = loc[0] + 300, loc[1] + 100
                 if coord_transform:
-                    label_x, label_y = coord_transform(0, np.array([[label_x]]), np.array([[label_y]]))
-                    label_x, label_y = label_x[0, 0], label_y[0, 0]
+                    lx, ly = coord_transform(0, np.array([[label_x]]), np.array([[label_y]]))
+                    if getattr(lx, 'size', 0) and getattr(ly, 'size', 0):
+                        label_x, label_y = lx[0, 0], ly[0, 0]
                 ax.text(label_x, label_y, t.name)
 
     ax.set_xlabel(r'$x$ [m]')
     ax.set_ylabel(r'$y$ [m]')
-    if xlim: ax.set_xlim(xlim)
-    if ylim: ax.set_ylim(ylim)
+    if xlim is not None: ax.set_xlim(xlim)
+    if ylim is not None: ax.set_ylim(ylim)
     if title: ax.set_title(title)
 
     if turbine_error:
-        x = np.array([t.location[0] for t in self.turbines])
-        y = np.array([t.location[1] for t in self.turbines])
-        if coord_transform:
-            x, y = coord_transform(0, x[None, :], y[None, :])
-            x, y = x[0], y[0]
-        errors = [t.err for t in self.turbines]
-        sc = ax.scatter(x, y, c=errors, cmap='RdBu_r', edgecolors='k', s=100, vmin=-20, vmax=20)
+        xs = np.array([getattr(t, 'location', [np.nan, np.nan])[0] for t in getattr(self, 'turbines', [])])
+        ys = np.array([getattr(t, 'location', [np.nan, np.nan])[1] for t in getattr(self, 'turbines', [])])
+        if coord_transform and xs.size and ys.size:
+            Xp1, Yp1 = coord_transform(0, xs[None, :], ys[None, :])
+            xs, ys = Xp1[0], Yp1[0]
+        errors = np.array([getattr(t, 'err', np.nan) for t in getattr(self, 'turbines', [])])
+        sc = ax.scatter(xs, ys, c=errors, cmap='RdBu_r', edgecolors='k', s=100, vmin=-20, vmax=20)
 
     divider = make_axes_locatable(ax)
     cax = divider.append_axes("right", size="5%", pad=0.1)
@@ -249,21 +294,24 @@ def plot_streamwise_new(self, name='horizontalProfile.png', field='Uh+uw', z=Non
         cbar2 = fig.colorbar(sc, cax=cax2)
         cbar2.set_label("% Error", fontsize=12)
         cax.set_position([cax.get_position().x0 - 0.05, cax.get_position().y0,
-                        cax.get_position().width, cax.get_position().height])
+                          cax.get_position().width, cax.get_position().height])
 
     fig.savefig(self.saveDir + '/' + name, bbox_inches='tight', dpi=250)
 
+    # -----------------------
+    # Optional: make a video
+    # -----------------------
     if video and hasattr(self, 'u_time'):
         if field not in ('Uh+uw', 'wspd'):
             raise NotImplementedError("Video is only implemented for field='Uh+uw' or 'wspd'")
 
         def compute_transformed_data():
             out = []
-            for frame in self.u_time:
+            for k, frame in enumerate(self.u_time):
                 d = (frame[:, :, i] + self.Uh) / self.Uh if not background else frame[:, :, i] / self.Uh
                 if coord_transform:
                     X, Y = np.meshgrid(self.x, self.y, indexing='ij')
-                    Xp, Yp = coord_transform(self.time_video[frame], X, Y)
+                    Xp, Yp = coord_transform(self.time_video[k], X, Y)
                 else:
                     Xp, Yp = X, Y
                 out.append((Xp, Yp, d))
@@ -273,16 +321,21 @@ def plot_streamwise_new(self, name='horizontalProfile.png', field='Uh+uw', z=Non
 
         def update(frame):
             Xp, Yp, d = transformed_data[frame]
-            img.set_array(d.flatten())
+            img.set_array(d.ravel())
             img.set_clim(vmin, vmax)
-            ax.set_title(f"Simulation Time: {self.time_video[frame]:.1f} s")
+            t_val = self.time_video[frame]
+            t_label = t_val.strftime("%Y-%m-%d %H:%M:%S") if hasattr(t_val, "strftime") else str(t_val)
+            ax.set_title(f"Simulation Time: {t_label}")
 
             if turb_loc:
-                for line, t in zip(ax.get_lines(), self.turbines):
-                    x1 = x2 = t.location_time[frame][0]
-                    y1, y2 = t.location_time[frame][1] - t.D / 2, t.location_time[frame][1] + t.D / 2
+                for line, t in zip(ax.get_lines(), getattr(self, 'turbines', [])):
+                    t_locs = np.asarray(getattr(t, 'location_time', []), dtype=float)
+                    if t_locs.size == 0:
+                        continue
+                    x1 = x2 = t_locs[frame][0]
+                    y1, y2 = t_locs[frame][1] - t.D / 2, t_locs[frame][1] + t.D / 2
                     xm, ym = x1, (y1 + y2) / 2
-                    alpha = t.alpha_fun(self.time_video[frame])
+                    alpha = t.alpha_fun(t_val) if hasattr(t, 'alpha_fun') else getattr(t, 'alpha', 0.0)
                     dx, dy = x1 - xm, y1 - ym
                     xr1 = xm + dx * np.cos(alpha) - dy * np.sin(alpha)
                     yr1 = ym + dy * np.cos(alpha) + dx * np.sin(alpha)
@@ -290,29 +343,32 @@ def plot_streamwise_new(self, name='horizontalProfile.png', field='Uh+uw', z=Non
                     xr2 = xm + dx * np.cos(alpha) - dy * np.sin(alpha)
                     yr2 = ym + dy * np.cos(alpha) + dx * np.sin(alpha)
                     if coord_transform:
-                        xr, yr = coord_transform(self.time_video[frame], np.array([[xr1, xr2]]), np.array([[yr1, yr2]]))
-                        xr1, xr2 = xr[0, 0], xr[0, 1]
-                        yr1, yr2 = yr[0, 0], yr[0, 1]
+                        xr, yr = coord_transform(t_val, np.array([[xr1, xr2]]), np.array([[yr1, yr2]]))
+                        if getattr(xr, 'size', 0) >= 2 and getattr(yr, 'size', 0) >= 2:
+                            xr1, xr2 = xr[0, 0], xr[0, 1]
+                            yr1, yr2 = yr[0, 0], yr[0, 1]
                     line.set_data([xr1, xr2], [yr1, yr2])
 
             if turbine_error:
-                errors = [np.interp(self.time_video[frame], t.time, t.err_time) for t in self.turbines]
+                errors = [np.interp(t_val, getattr(t, 'time', [0]), getattr(t, 'err_time', [np.nan]))
+                          for t in getattr(self, 'turbines', [])]
                 sc.set_array(np.array(errors))
-
             return img,
 
         ani = FuncAnimation(fig, update, frames=len(self.u_time), blit=True, cache_frame_data=False)
         fps = 2.5 * 60 / self.dt
-        writer = FFMpegWriter(fps=fps, metadata=dict(artist='OpenAI'), bitrate=5000)
+        writer = FFMpegWriter(fps=fps, metadata=dict(artist='NREL'), bitrate=5000)
         ani.save(self.saveDir + '/' + name[:-4] + "_time_history.mp4", writer=writer)
 
     plt.close(fig)
 
 
+
+
 def plot_streamwise(self, name='horizontalProfile.png', background=False,
         vmin=None, vmax=None, xlim=None, ylim=None, title=None, yshift=None,
         turbine_names=None, turb_loc=True,
-        video=False, turbine_error=False):
+        video=False, turbine_error=False, cmap='viridis'):
     '''
     Plot horizontal profiles
     '''
@@ -379,7 +435,7 @@ def plot_streamwise(self, name='horizontalProfile.png', background=False,
     # Same size x and y
     ax.set_aspect('equal', adjustable='box')
     img = ax.pcolormesh(self.x, self.y, data, #X, Y, data,
-            cmap='viridis', shading='nearest', #shading='gouraud', 
+            cmap=cmap, shading='nearest', #shading='gouraud', 
             vmin=vmin, vmax=vmax)
 
     # Set the figure labels
