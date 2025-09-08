@@ -110,7 +110,8 @@ You may also want to install:
 
 ## 🌀 Quick Start
 
-```cd examples
+```
+cd examples
 python example_1_turbulence_models.py
 ```
 
