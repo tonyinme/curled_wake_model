@@ -44,8 +44,8 @@ def finite_diff(arr, dy, dz):
         duwdz: Approximation of partial derivative w.r.t. z (axis 1)
     """
     ny, nz = arr.shape  # Number of points in y and z directions
-    duwdy = np.zeros_like(arr, dtype=np.float64)  # Partial derivative w.r.t. y
-    duwdz = np.zeros_like(arr, dtype=np.float64)  # Partial derivative w.r.t. z
+    duwdy = np.zeros_like(arr, dtype=np.float32)  # Partial derivative w.r.t. y
+    duwdz = np.zeros_like(arr, dtype=np.float32)  # Partial derivative w.r.t. z
 
     # Central difference (interior points)
     for i in range(1, ny - 1):  # Iterate over y (axis 0)
@@ -84,9 +84,9 @@ def finite_diff_3d(arr, dx, dy, dz):
         duwdz: Approximation of partial derivative w.r.t. z (axis 2)
     """
     nx, ny, nz = arr.shape  # Number of points in x, y, and z directions
-    duwdx = np.zeros_like(arr, dtype=np.float64)  # Partial derivative w.r.t. x
-    duwdy = np.zeros_like(arr, dtype=np.float64)  # Partial derivative w.r.t. y
-    duwdz = np.zeros_like(arr, dtype=np.float64)  # Partial derivative w.r.t. z
+    duwdx = np.zeros_like(arr, dtype=np.float32)  # Partial derivative w.r.t. x
+    duwdy = np.zeros_like(arr, dtype=np.float32)  # Partial derivative w.r.t. y
+    duwdz = np.zeros_like(arr, dtype=np.float32)  # Partial derivative w.r.t. z
 
     # Central difference (interior points)
 #    for i in range(1, nx - 1):  # Iterate over x (axis 0)
@@ -169,7 +169,7 @@ def laplacian(u, dy, dz):
     ny, nz = u.shape
 #    d2udy2 = np.zeros_like(u)
 #    d2udz2 = np.zeros_like(u)
-    lap = np.zeros_like(u, dtype=np.float64)
+    lap = np.zeros_like(u, dtype=np.float32)
 
     # Compute second derivatives in y-direction (axis=1)
     for j in range(2, ny-2):

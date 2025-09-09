@@ -88,11 +88,11 @@ def main(args):
     yaw = [25, 15, 0, 25, 15, 0, ]
 
     # The length of the domain
-    x_min = np.amin(np.array(layout_x))
-    x_max = np.amax(np.array(layout_x))
+    x_min = np.amin(np.array(layout_x, dtype=np.float32))
+    x_max = np.amax(np.array(layout_x, dtype=np.float32))
 
-    y_min = np.amin(np.array(layout_y))
-    y_max = np.amax(np.array(layout_y))
+    y_min = np.amin(np.array(layout_y, dtype=np.float32))
+    y_max = np.amax(np.array(layout_y, dtype=np.float32))
 
     # The domain sizes [m]
     Lx = x_max - x_min + 2000
@@ -248,7 +248,7 @@ class wind_farm_class:
         self.Ny = Ny
         self.Nz = Nz
         self.CFL=CFL
-        self.Uh = Uh
+        self.Uh = np.float32(Uh)
         self.h = h
         self.turbines = turbines
         self.saveDir = saveDir
@@ -302,9 +302,9 @@ class wind_farm_class:
         self.W.fill(0)
         
         # Create the wake deficit array
-        self.uw = np.zeros_like(self.U, dtype=np.float64)
-        self.vw = np.zeros_like(self.U, dtype=np.float64)
-        self.ww = np.zeros_like(self.U, dtype=np.float64)
+        self.uw = np.zeros_like(self.U, dtype=np.float32)
+        self.vw = np.zeros_like(self.U, dtype=np.float32)
+        self.ww = np.zeros_like(self.U, dtype=np.float32)
 
         # Identify the point in the x location where the wake is active
         self.activate = [np.argmin(np.abs(self.x - t.location[0]))
@@ -327,9 +327,9 @@ class wind_farm_class:
         # The coordinates system is defined by having the rotor disk
         # at location (0, 0, tower height)
         # The ground is at z=0
-        self.x, self.dx = np.linspace(0, self.Lx, self.Nx, retstep=True)
-        self.y, self.dy = np.linspace(0, self.Ly, self.Ny, retstep=True)
-        self.z, self.dz = np.linspace(0, self.Lz, self.Nz, retstep=True)
+        self.x, self.dx = np.linspace(0, self.Lx, self.Nx, retstep=True, dtype=np.float32)
+        self.y, self.dy = np.linspace(0, self.Ly, self.Ny, retstep=True, dtype=np.float32)
+        self.z, self.dz = np.linspace(0, self.Lz, self.Nz, retstep=True, dtype=np.float32)
         
         # The 3-D coordinates in the domain
         self.X, self.Y, self.Z = np.meshgrid(self.x, self.y, self.z, indexing='ij') 
@@ -351,12 +351,12 @@ class wind_farm_class:
             Vertical velocity field (zeros)
         """
         # Define the streamwise component as hub height velocity
-        U = self.Uh * np.ones(np.shape(self.Y))
+        U = self.Uh * np.ones(np.shape(self.Y), dtype=np.float32)
 
         # Define the spanwise and wall normal components as zero
         # The array is the same size as Y and Z
-        V = np.zeros(np.shape(self.Y), dtype=np.float64)
-        W = np.zeros(np.shape(self.Y), dtype=np.float64)
+        V = np.zeros(np.shape(self.Y), dtype=np.float32)
+        W = np.zeros(np.shape(self.Y), dtype=np.float32)
 
         return U, V, W
 
