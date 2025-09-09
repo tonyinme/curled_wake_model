@@ -100,7 +100,6 @@ def solve(self, f=4, cf=2, rk_order=4, check_stability=False, nut_x=False, nut_m
 
     # Load the appropriate turbulence model
     turbulence_model = model_classes[nut_model](self, **model_kwargs.get(nut_model, {}), debug=False)
-#    turbulence_model = model_classes[nut_model](self, debug=False)
 
     # Find the plane for each turbine
     for turbine in self.turbines: turbine.n = np.abs(self.x - turbine.location[0]).argmin()        
@@ -113,85 +112,77 @@ def solve(self, f=4, cf=2, rk_order=4, check_stability=False, nut_x=False, nut_m
     turbulence_model.initialize()
 
     # Initialize variables
-    uw = self.uw
-    vw = self.vw
-    ww = self.ww
-    uw.fill(0)
-    vw.fill(0)
-    ww.fill(0)
+    U_all, V_all, W_all = self.U, self.V, self.W
+    uw, vw, ww          = self.uw, self.vw, self.ww
+    nu                   = self.nu
+    dx, dy, dz           = self.dx, self.dy, self.dz
+    Y_all, Z_all         = self.Y, self.Z
+    turbines             = self.turbines
+    cf_local             = self.cf
+        
+    # Zero wake fields
+    uw.fill(0); vw.fill(0); ww.fill(0)
 
-    dx = self.dx
-    dy = self.dy
-    dz = self.dz
+    # Scratch buffer to avoid allocating "fact" every step
+    fact = np.empty_like(uw[0], dtype=uw.dtype)
 
     # Loop over downstream distances
     for i in range(1, self.Nx):
-        U = self.U[i, :, :]
-        V = self.V[i, :, :]
-        W = self.W[i, :, :]
+        U = U_all[i]
+        V = V_all[i]
+        W = W_all[i]
+        U_prev = U_all[i-1]
 
         # Perform RK step
-        uw[i,:,:] = runge_kutta_step(uw[i-1,:,:], dx, U, V + vw[i-1,:,:], W+ ww[i-1,:,:], self.dy, self.dz, self.nu[i-1,:,:])
-                
-        # A simple evolution model to scale v the same way that U has scaled
-        # This saves all the work of resolving the transport equation (du/dx~dv/dx)
-        fact = (U + uw[i-1,:,:]) / (U + self.uw[i,:,:])
-        # This ensures that V and W do not become larger (they should always decay)
-        fact = np.clip(fact, .1, 1.)
-        vw[i,:,:] = vw[i-1,:,:] * fact
-        ww[i,:,:] = ww[i-1,:,:] * fact
+        uw[i] = runge_kutta_step(uw[i-1], dx, U, V + vw[i-1], W + ww[i-1], dy, dz, nu[i-1])
+
+        # Simple evolution model for v,w magnitudes
+        # fact = (U + uw[i-1]) / (U + uw[i]) with clipping in-place
+        np.add(U, uw[i-1], out=fact)
+        np.divide(fact, U + uw[i], out=fact)
+        np.clip(fact, 0.1, 1.0, out=fact)
+        vw[i] = vw[i-1] * fact
+        ww[i] = ww[i-1] * fact
 
         # This is used to check the stability of the numerical algorithm. 
         # It is recommended to leave this off (default) unless debugging
         if check_stability:
-            U_tot = U+uw[i,:,:]
-            # Let's make the nu stability check here
-            nu_min_v = np.abs(self.dx * (V + vw[i-1,:,:])**2 / (2 * U_tot))
-            nu_min_w = np.abs(self.dx * (W + ww[i-1,:,:])**2 / (2 * U_tot))
+
+            U_tot = U + uw[i]
+            nu_min_v = np.abs(dx * (V + vw[i-1])**2 / (2 * U_tot))
+            nu_min_w = np.abs(dx * (W + ww[i-1])**2 / (2 * U_tot))
             nu_min = np.maximum(nu_min_v, nu_min_w)
-
-            # Upper bound from Eq. B
-            nu_max = np.abs(U_tot * self.dy**2 / (2 * self.dx))
-            self.nu[i,:,:] = np.clip(self.nu[i,:,:], nu_min, np.maximum(nu_min, nu_max))
-
-            # The total number of points where we expect an instability
+            nu_max = np.abs(U_tot * (dy**2) / (2 * dx))
+            nu[i] = np.clip(nu[i], nu_min, np.maximum(nu_min, nu_max))
             num_unstable = np.count_nonzero(nu_min > nu_max)
-            if num_unstable > 0: 
+            if num_unstable > 0:
                 print(f'Instability detected at x={self.x[i]} in {num_unstable} points')
 
-        # Add wake deficit from turbines
-        for turbine in self.turbines:
-            
-            # Plane of the turbine
-            n = turbine.n
-
-            # Add the wake here
-            if (n == i) and (turbine.state is True):
-                #print('Activating turbine', str(j))
-                uw[i,:,:] += turbine.initial_condition(
-                    self.Y[i,:,:] - turbine.location[1], 
-                    self.Z[i,:,:] - turbine.location[2], 
-                    self.U[i-1, :, :] + uw[i-1,:,:], V=V,  # this is the same as in the dynamic model (plane before)
-                    #sigma=max(2, 7/self.dy),
-                    sigma=max(2, 15/self.dy),
+        # Add turbine wake effects on this plane
+        Yi = Y_all[i]
+        Zi = Z_all[i]
+        for turb in turbines:
+            if turb.n == i and (turb.state is True):
+                uw[i] += turb.initial_condition(
+                    Yi - turb.location[1],
+                    Zi - turb.location[2],
+                    U_prev + uw[i-1], V=V,
+                    sigma=max(2, 15 / dy),
                 )
-
-                # Add vortex effects
-                if (turbine.alpha != 0) or (turbine.tilt !=0):
-                    #print(f'Adding curl for {turbine.name}')
-                    # Only account for curl in the vicinity of the turbine
-                    cond = (np.abs(self.Y[i,:,:] - turbine.location[1]) < (turbine.D * cf)).nonzero()
-                    # This function takes in a numpy indexed array and returns the modified version of the array with curl
-                    vw[i, cond[0], cond[1]], ww[i,  cond[0], cond[1]] =  turbine.add_curl(
-                                self.Y[i, cond[0], cond[1]] - turbine.location[1], 
-                                self.Z[i, cond[0], cond[1]] - turbine.location[2], 
-                                vw[i, cond[0], cond[1]], ww[i, cond[0], cond[1]]
-                            )
-
-                turbine.add_rotation(
-                    self.Y[i,:,:] - turbine.location[1], 
-                    self.Z[i,:,:] - turbine.location[2], 
-                    vw[i,:,:], ww[i,:,:]
+                # Curl (only near the turbine)
+                if (turb.alpha != 0) or (turb.tilt != 0):
+                    cond = (np.abs(Yi - turb.location[1]) < (turb.D * cf_local)).nonzero()
+                    vw[i, cond[0], cond[1]], ww[i, cond[0], cond[1]] = turb.add_curl(
+                        Yi[cond] - turb.location[1],
+                        Zi[cond] - turb.location[2],
+                        vw[i, cond[0], cond[1]],
+                        ww[i, cond[0], cond[1]],
+                    )
+                # Rotation (entire plane)
+                turb.add_rotation(
+                    Yi - turb.location[1],
+                    Zi - turb.location[2],
+                    vw[i], ww[i],
                 )
                 
         # This will update the variable nu
