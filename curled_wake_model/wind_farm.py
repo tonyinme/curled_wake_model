@@ -576,10 +576,19 @@ class wind_farm_class:
         # Get time vector (assumes all turbines share the same time base)
         times = self.turbines[0].time
 
-        # Build a dictionary: keys are turbine names, values are power time series in kW
-        power_data = {
-            turb.name: np.array(turb.pwr_time) * 1e-3 for turb in self.turbines
-        }
+        # If the solver has not been run in time, save the time history
+        for turb in self.turbines:
+            if not turb.time:
+                turb.update_time_vars(t=0)
+
+        # Build dictionary with unique turbine names
+        seen, power_data = {}, {}
+        for turb in self.turbines:
+            name = turb.name
+            seen[name] = seen.get(name, 0) + 1
+            if seen[name] > 1:
+                name = f"{name}_{seen[name]}"
+            power_data[name] = np.array(turb.pwr_time) * 1e-3
 
         # Create DataFrame with time as index
         df = pd.DataFrame(power_data, index=times)

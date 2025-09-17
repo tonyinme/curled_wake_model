@@ -179,20 +179,7 @@ class turbine_model_class():
 
         # The time history used for transient simulations
         # We can append values to these lists
-        self.time = []
-        self.Cp_time = []
-        self.Ct_time = []
-        self.pwr_time = []
-        self.Uh_time = []
-        self.alpha_time = []
-        self.location_time = []
-        #self.Um_time = []
-        #self.Vm_time = []
-        
-        '''
-        Compute needed quantities from inputs
-        '''
-        # ~ self._compute_induction()
+        self._init_time_vars()
 
     @property
     def alpha(self):
@@ -227,7 +214,14 @@ class turbine_model_class():
         else:
             print('alpha setter called but without a time value')
 
-
+    def _init_time_vars(self):
+        self.time = []
+        self.Cp_time = []
+        self.Ct_time = []
+        self.pwr_time = []
+        self.Uh_time = []
+        self.alpha_time = []
+        self.location_time = []
 
     def update_time_vars(self, t=0):
         '''

@@ -79,8 +79,9 @@ def main(args):
                         # Flag to include the ground effects
                         ground=True,
                         # Location
-                        location=(layout_x[i] - x_min + 200 , layout_y[i] - y_min + 200, 90)
-                        #~ location=(np.random.rand()*5000, np.random.rand()*5000, 200)
+                        location=(layout_x[i] - x_min + 200 , layout_y[i] - y_min + 200, 90),
+                        # The name of the turbine
+                        name=f'turbine_{i}',
                         )
          for i in range(len(layout_x))
      ]
@@ -115,6 +116,12 @@ def main(args):
         # Plot the power from all turbines
         power = [t.power() for t in turbines]
         plt.plot(power, 'o-', label=turb)
+
+        # Save the power for all turbines
+        wf.save_turbine_power(fname=f'turbine_pwr_{turb}.csv')
+
+        for turb in wf.turbines: turb._init_time_vars()
+
 
     plt.xlabel('Turbine')
     plt.ylabel('Power [MW]')
